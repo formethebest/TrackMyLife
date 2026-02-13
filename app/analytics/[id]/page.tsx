@@ -47,7 +47,8 @@ export default function AnalyticsPage() {
             loadEntries(found, period)
         }
         load()
-    }, [trackerId, period, router, loadEntries])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [trackerId, period, router])
 
     if (!tracker) {
         return <div className="min-h-screen flex items-center justify-center">Загрузка...</div>
