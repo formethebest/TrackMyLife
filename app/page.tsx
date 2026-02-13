@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Plus } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, LogOut } from 'lucide-react'
 import { format } from 'date-fns'
 import { getTrackers } from '@/lib/storage'
+import { useAuth } from '@/lib/auth-context'
 import { Tracker } from '@/types'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { TrackerCard } from '@/components/tracker-card'
@@ -12,18 +13,22 @@ import { DateSelector } from '@/components/date-selector'
 import { Button } from '@/components/ui/button'
 
 export default function Home() {
+    const { user, loading: authLoading, signOut } = useAuth()
     const [trackers, setTrackers] = useState<Tracker[]>([])
     const [currentDate, setCurrentDate] = useState(new Date())
     const [isFormOpen, setIsFormOpen] = useState(false)
     const [editingTracker, setEditingTracker] = useState<Tracker | null>(null)
 
-    useEffect(() => {
-        loadTrackers()
+    const loadTrackers = useCallback(async () => {
+        const data = await getTrackers()
+        setTrackers(data)
     }, [])
 
-    const loadTrackers = () => {
-        setTrackers(getTrackers())
-    }
+    useEffect(() => {
+        if (user) {
+            loadTrackers()
+        }
+    }, [user, loadTrackers])
 
     const handleTrackerSaved = () => {
         loadTrackers()
@@ -45,6 +50,14 @@ export default function Home() {
         setCurrentDate(newDate)
     }
 
+    if (authLoading) {
+        return (
+            <main className="min-h-screen bg-background flex items-center justify-center">
+                <p className="text-muted-foreground">Загрузка...</p>
+            </main>
+        )
+    }
+
     const dateString = format(currentDate, 'yyyy-MM-dd')
 
     return (
@@ -53,7 +66,17 @@ export default function Home() {
                 {/* Header */}
                 <header className="flex items-center justify-between mb-4">
                     <h1 className="text-2xl font-bold tracking-tight">TrackMyLife</h1>
-                    <ThemeToggle />
+                    <div className="flex items-center gap-2">
+                        <ThemeToggle />
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={signOut}
+                            title="Выйти"
+                        >
+                            <LogOut className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </header>
 
                 {/* Date Selector */}

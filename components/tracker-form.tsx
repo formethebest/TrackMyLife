@@ -40,6 +40,7 @@ export function TrackerForm({ open, onClose, onSaved, tracker }: TrackerFormProp
     const [unit, setUnit] = useState('')
     const [color, setColor] = useState(COLORS[0].value)
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+    const [saving, setSaving] = useState(false)
 
     useEffect(() => {
         if (tracker) {
@@ -55,11 +56,13 @@ export function TrackerForm({ open, onClose, onSaved, tracker }: TrackerFormProp
         }
     }, [tracker, open])
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
         if (!name.trim()) return
         if (type === 'quantitative' && !unit.trim()) return
+
+        setSaving(true)
 
         const trackerData = {
             name: name.trim(),
@@ -69,17 +72,20 @@ export function TrackerForm({ open, onClose, onSaved, tracker }: TrackerFormProp
         }
 
         if (tracker) {
-            updateTracker(tracker.id, trackerData)
+            await updateTracker(tracker.id, trackerData)
         } else {
-            addTracker(trackerData)
+            await addTracker(trackerData)
         }
 
+        setSaving(false)
         onSaved()
     }
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
         if (tracker) {
-            deleteTracker(tracker.id)
+            setSaving(true)
+            await deleteTracker(tracker.id)
+            setSaving(false)
             onSaved()
             setShowDeleteConfirm(false)
         }
@@ -171,6 +177,7 @@ export function TrackerForm({ open, onClose, onSaved, tracker }: TrackerFormProp
                                     variant="destructive"
                                     onClick={() => setShowDeleteConfirm(true)}
                                     className="sm:mr-auto"
+                                    disabled={saving}
                                 >
                                     Удалить
                                 </Button>
@@ -178,8 +185,8 @@ export function TrackerForm({ open, onClose, onSaved, tracker }: TrackerFormProp
                             <Button type="button" variant="outline" onClick={onClose}>
                                 Отмена
                             </Button>
-                            <Button type="submit">
-                                {tracker ? 'Сохранить' : 'Создать'}
+                            <Button type="submit" disabled={saving}>
+                                {saving ? 'Сохранение...' : tracker ? 'Сохранить' : 'Создать'}
                             </Button>
                         </DialogFooter>
                     </form>

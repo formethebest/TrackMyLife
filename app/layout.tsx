@@ -2,6 +2,7 @@ import './globals.css'
 import { ThemeProvider } from 'next-themes'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import { AuthProvider } from '@/lib/auth-context'
 
 const inter = Inter({ subsets: ['latin', 'cyrillic'] })
 
@@ -24,7 +25,9 @@ export default function RootLayout({
                     enableSystem
                     disableTransitionOnChange
                 >
-                    {children}
+                    <AuthProvider>
+                        {children}
+                    </AuthProvider>
                 </ThemeProvider>
             </body>
         </html>
