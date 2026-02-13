@@ -1,92 +1,208 @@
 import { Tracker, Entry } from '@/types';
+import { createClient } from '@/lib/supabase';
 
-const TRACKERS_KEY = 'trackmylife_trackers';
-const ENTRIES_KEY = 'trackmylife_entries';
+// Helper to map Supabase row to Tracker type
+function mapTracker(row: Record<string, unknown>): Tracker {
+    return {
+        id: row.id as string,
+        name: row.name as string,
+        type: row.type as Tracker['type'],
+        unit: (row.unit as string) || undefined,
+        color: row.color as string,
+        createdAt: row.created_at as string,
+        updatedAt: row.updated_at as string,
+    };
+}
 
-function safeParse<T>(str: string | null, fallback: T): T {
-    try {
-        return str ? JSON.parse(str) : fallback;
-    } catch (e) {
-        console.error('JSON parse error', e);
-        return fallback;
-    }
+// Helper to map Supabase row to Entry type
+function mapEntry(row: Record<string, unknown>): Entry {
+    return {
+        id: row.id as string,
+        trackerId: row.tracker_id as string,
+        date: row.date as string,
+        valueBoolean: row.value_boolean as boolean | undefined,
+        valueNumber: row.value_number as number | undefined,
+        createdAt: row.created_at as string,
+        updatedAt: row.updated_at as string,
+    };
 }
 
 // Trackers
-export function getTrackers(): Tracker[] {
+export async function getTrackers(): Promise<Tracker[]> {
     if (typeof window === 'undefined') return [];
-    return safeParse<Tracker[]>(localStorage.getItem(TRACKERS_KEY), []);
+    const supabase = createClient();
+    const { data, error } = await supabase
+        .from('trackers')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching trackers:', error);
+        return [];
+    }
+    return (data || []).map(mapTracker);
 }
 
-function saveTrackers(trackers: Tracker[]) {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(TRACKERS_KEY, JSON.stringify(trackers));
+export async function addTracker(
+    tracker: Omit<Tracker, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<Tracker | null> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('trackers')
+        .insert({
+            user_id: user.id,
+            name: tracker.name,
+            type: tracker.type,
+            unit: tracker.unit || null,
+            color: tracker.color,
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error adding tracker:', error);
+        return null;
+    }
+    return mapTracker(data);
 }
 
-export function addTracker(tracker: Omit<Tracker, 'id' | 'createdAt' | 'updatedAt'>): Tracker {
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const newTracker: Tracker = { ...tracker, id, createdAt: now, updatedAt: now };
-    const trackers = getTrackers();
-    trackers.push(newTracker);
-    saveTrackers(trackers);
-    return newTracker;
+export async function updateTracker(
+    id: string,
+    updates: Partial<Tracker>
+): Promise<Tracker | null> {
+    const supabase = createClient();
+
+    const updateData: Record<string, unknown> = {};
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.type !== undefined) updateData.type = updates.type;
+    if (updates.unit !== undefined) updateData.unit = updates.unit || null;
+    if (updates.color !== undefined) updateData.color = updates.color;
+
+    const { data, error } = await supabase
+        .from('trackers')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error updating tracker:', error);
+        return null;
+    }
+    return mapTracker(data);
 }
 
-export function updateTracker(id: string, updates: Partial<Tracker>): Tracker | null {
-    const trackers = getTrackers();
-    const idx = trackers.findIndex(t => t.id === id);
-    if (idx === -1) return null;
-    trackers[idx] = { ...trackers[idx], ...updates, updatedAt: new Date().toISOString() };
-    saveTrackers(trackers);
-    return trackers[idx];
-}
+export async function deleteTracker(id: string): Promise<void> {
+    const supabase = createClient();
+    // Entries are cascade-deleted via foreign key
+    const { error } = await supabase
+        .from('trackers')
+        .delete()
+        .eq('id', id);
 
-export function deleteTracker(id: string): void {
-    const trackers = getTrackers().filter(t => t.id !== id);
-    saveTrackers(trackers);
-    // Удаляем все связанные entries
-    const entries = getEntries().filter(e => e.trackerId !== id);
-    saveEntries(entries);
+    if (error) {
+        console.error('Error deleting tracker:', error);
+    }
 }
 
 // Entries
-export function getEntries(): Entry[] {
+export async function getEntries(): Promise<Entry[]> {
     if (typeof window === 'undefined') return [];
-    return safeParse<Entry[]>(localStorage.getItem(ENTRIES_KEY), []);
-}
+    const supabase = createClient();
+    const { data, error } = await supabase
+        .from('entries')
+        .select('*')
+        .order('date', { ascending: true });
 
-function saveEntries(entries: Entry[]) {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
-}
-
-export function getEntry(trackerId: string, date: string): Entry | null {
-    const entries = getEntries();
-    return entries.find(e => e.trackerId === trackerId && e.date === date) || null;
-}
-
-export function saveEntry(entry: Omit<Entry, 'id' | 'createdAt' | 'updatedAt'>): Entry {
-    const entries = getEntries();
-    const now = new Date().toISOString();
-    const existing = entries.findIndex(e => e.trackerId === entry.trackerId && e.date === entry.date);
-
-    if (existing !== -1) {
-        entries[existing] = { ...entries[existing], ...entry, updatedAt: now };
-    } else {
-        entries.push({ ...entry, id: crypto.randomUUID(), createdAt: now, updatedAt: now });
+    if (error) {
+        console.error('Error fetching entries:', error);
+        return [];
     }
-
-    saveEntries(entries);
-    return entries.find(e => e.trackerId === entry.trackerId && e.date === entry.date) as Entry;
+    return (data || []).map(mapEntry);
 }
 
-export function getEntriesForTracker(trackerId: string, startDate: string, endDate: string): Entry[] {
-    const entries = getEntries();
-    return entries.filter(e => e.trackerId === trackerId && e.date >= startDate && e.date <= endDate);
+export async function getEntry(
+    trackerId: string,
+    date: string
+): Promise<Entry | null> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+        .from('entries')
+        .select('*')
+        .eq('tracker_id', trackerId)
+        .eq('date', date)
+        .maybeSingle();
+
+    if (error) {
+        console.error('Error fetching entry:', error);
+        return null;
+    }
+    return data ? mapEntry(data) : null;
 }
 
-export function getEntriesForDate(date: string): Entry[] {
-    const entries = getEntries();
-    return entries.filter(e => e.date === date);
+export async function saveEntry(
+    entry: Omit<Entry, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<Entry | null> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+        .from('entries')
+        .upsert(
+            {
+                user_id: user.id,
+                tracker_id: entry.trackerId,
+                date: entry.date,
+                value_boolean: entry.valueBoolean ?? null,
+                value_number: entry.valueNumber ?? null,
+            },
+            { onConflict: 'tracker_id,date' }
+        )
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error saving entry:', error);
+        return null;
+    }
+    return mapEntry(data);
+}
+
+export async function getEntriesForTracker(
+    trackerId: string,
+    startDate: string,
+    endDate: string
+): Promise<Entry[]> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+        .from('entries')
+        .select('*')
+        .eq('tracker_id', trackerId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching entries for tracker:', error);
+        return [];
+    }
+    return (data || []).map(mapEntry);
+}
+
+export async function getEntriesForDate(date: string): Promise<Entry[]> {
+    const supabase = createClient();
+    const { data, error } = await supabase
+        .from('entries')
+        .select('*')
+        .eq('date', date);
+
+    if (error) {
+        console.error('Error fetching entries for date:', error);
+        return [];
+    }
+    return (data || []).map(mapEntry);
 }

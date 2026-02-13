@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, TrendingUp } from 'lucide-react'
 import { Tracker, Entry } from '@/types'
@@ -29,22 +29,26 @@ export default function AnalyticsPage() {
     const [entries, setEntries] = useState<Entry[]>([])
     const [period, setPeriod] = useState<7 | 30>(7)
 
-    useEffect(() => {
-        const trackers = getTrackers()
-        const found = trackers.find((t) => t.id === trackerId)
-        if (!found) {
-            router.push('/')
-            return
-        }
-        setTracker(found)
-        loadEntries(found, period)
-    }, [trackerId, period, router])
-
-    const loadEntries = (tracker: Tracker, days: number) => {
+    const loadEntries = useCallback(async (tracker: Tracker, days: number) => {
         const { start, end } = getDateRange(days)
-        const data = getEntriesForTracker(tracker.id, start, end)
+        const data = await getEntriesForTracker(tracker.id, start, end)
         setEntries(data)
-    }
+    }, [])
+
+    useEffect(() => {
+        const load = async () => {
+            const trackers = await getTrackers()
+            const found = trackers.find((t) => t.id === trackerId)
+            if (!found) {
+                router.push('/')
+                return
+            }
+            setTracker(found)
+            loadEntries(found, period)
+        }
+        load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [trackerId, period, router])
 
     if (!tracker) {
         return <div className="min-h-screen flex items-center justify-center">Загрузка...</div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Pencil, TrendingUp } from 'lucide-react'
 import { Tracker } from '@/types'
 import { getEntry, saveEntry } from '@/lib/storage'
@@ -21,25 +21,29 @@ export function TrackerCard({ tracker, date, onEdit, onUpdate }: TrackerCardProp
     const router = useRouter()
     const [value, setValue] = useState<boolean | number | null>(null)
     const [inputValue, setInputValue] = useState('')
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     useEffect(() => {
-        const entry = getEntry(tracker.id, date)
-        if (entry) {
-            if (tracker.type === 'boolean') {
-                setValue(entry.valueBoolean ?? false)
+        const loadEntry = async () => {
+            const entry = await getEntry(tracker.id, date)
+            if (entry) {
+                if (tracker.type === 'boolean') {
+                    setValue(entry.valueBoolean ?? false)
+                } else {
+                    setValue(entry.valueNumber ?? null)
+                    setInputValue(entry.valueNumber?.toString() ?? '')
+                }
             } else {
-                setValue(entry.valueNumber ?? null)
-                setInputValue(entry.valueNumber?.toString() ?? '')
+                setValue(tracker.type === 'boolean' ? false : null)
+                setInputValue('')
             }
-        } else {
-            setValue(tracker.type === 'boolean' ? false : null)
-            setInputValue('')
         }
+        loadEntry()
     }, [tracker.id, date, tracker.type])
 
-    const handleBooleanChange = (checked: boolean) => {
+    const handleBooleanChange = async (checked: boolean) => {
         setValue(checked)
-        saveEntry({
+        await saveEntry({
             trackerId: tracker.id,
             date,
             valueBoolean: checked,
@@ -54,9 +58,9 @@ export function TrackerCard({ tracker, date, onEdit, onUpdate }: TrackerCardProp
         const numVal = parseFloat(val)
         if (!isNaN(numVal) && val !== '') {
             setValue(numVal)
-            // Debounce save
-            setTimeout(() => {
-                saveEntry({
+            if (debounceRef.current) clearTimeout(debounceRef.current)
+            debounceRef.current = setTimeout(async () => {
+                await saveEntry({
                     trackerId: tracker.id,
                     date,
                     valueNumber: numVal,
